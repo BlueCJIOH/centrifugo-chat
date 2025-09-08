@@ -15,7 +15,6 @@ After containers start, create an admin user to manage rooms:
 ```sh
 docker compose exec backend python manage.py createsuperuser
 ```
-
 Use the Django admin at [http://localhost:9000/admin](http://localhost:9000/admin) to create chat rooms.
 
 ## Authentication
