@@ -92,6 +92,7 @@ if os.path.isfile(os.path.join(BASE_DIR, 'app', 'local_settings.py')):
 
 INSTALLED_APPS = [
     'rest_framework',
+    'rest_framework_simplejwt',
     'chat',
     'django.contrib.admin',
     'django.contrib.auth',
@@ -116,10 +117,15 @@ REST_FRAMEWORK = {
         'rest_framework.renderers.JSONRenderer',
     ],
     'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework.authentication.SessionAuthentication',
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
     ],
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 100
+}
+
+SIMPLE_JWT = {
+    'SIGNING_KEY': os.environ.get('JWT_SECRET', SECRET_KEY),
+    'USER_ID_CLAIM': 'sub',
 }
 
 ROOT_URLCONF = 'app.urls'

@@ -24,8 +24,8 @@ services:
     restart: unless-stopped
     volumes:
       - ./backend:/usr/src/app
-    expose:
-      - 8000
+    ports:
+      - "9000:8000"
     depends_on:
       db:
         condition: service_healthy
@@ -38,19 +38,6 @@ services:
     depends_on:
       db:
         condition: service_healthy
-
-  frontend:
-    stdin_open: true
-    build: ./frontend
-    volumes:
-      - ./frontend:/usr/src/app
-      - /usr/src/app/node_modules
-    expose:
-      - 5173
-    environment:
-      - NODE_ENV=development
-    depends_on:
-      - backend
 
   centrifugo:
     image: centrifugo/centrifugo:v6
@@ -131,18 +118,6 @@ services:
         curl -X POST -H 'Content-Type: application/json' -v --data @/debezium-config.json http://connect:8083/connectors;
         echo 'Configuration posted';
       "
-
-  nginx:
-    image: nginx:1.25
-    restart: unless-stopped
-    volumes:
-      - ./nginx:/etc/nginx/
-    ports:
-      - 9000:80
-    depends_on:
-      - backend
-      - frontend
-      - centrifugo
 
   redis:
     image: redis:${REDIS_VERSION:-7}-alpine
