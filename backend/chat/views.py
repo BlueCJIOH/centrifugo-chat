@@ -16,12 +16,24 @@ from rest_framework.views import APIView
 from rest_framework.viewsets import GenericViewSet
 
 from .models import Message, Room, RoomMember, Outbox, CDC
-from .serializers import MessageSerializer, RoomSearchSerializer, RoomSerializer, RoomMemberSerializer
+from .serializers import (
+    MessageSerializer,
+    RoomSearchSerializer,
+    RoomSerializer,
+    RoomMemberSerializer,
+    RoomMemberListSerializer,
+    RoomCreateSerializer,
+)
+from app.permissions import IsServiceToken
+
+
+ 
 
 
 class RoomListViewSet(ListModelMixin, GenericViewSet):
     serializer_class = RoomSerializer
     permission_classes = [IsAuthenticated]
+    http_method_names = ['get', 'post']
 
     def get_queryset(self):
         return Room.objects.annotate(
@@ -29,6 +41,88 @@ class RoomListViewSet(ListModelMixin, GenericViewSet):
         ).filter(
             memberships__user=str(self.request.user.pk)
         ).select_related('last_message').order_by('-bumped_at')
+
+        
+
+    @transaction.atomic
+    def create(self, request, *args, **kwargs):
+        # Only service tokens may create rooms and set initial members.
+        if not IsServiceToken().has_permission(request, self):
+            return Response({'detail': 'forbidden'}, status=status.HTTP_403_FORBIDDEN)
+        serializer = RoomCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        name = serializer.validated_data['name']
+        members = serializer.validated_data.get('members') or []
+        room = Room.objects.create(name=name)
+        # Create memberships and broadcast join events.
+        # Ensure deduplication of member ids.
+        unique_members = list({str(mid) for mid in members})
+        created_members = []
+        for user_id in unique_members:
+            obj, created = RoomMember.objects.get_or_create(user=str(user_id), room=room)
+            if created:
+                created_members.append(obj)
+
+        # Broadcast one-by-one to keep event type consistent with frontend expectations.
+        channels = self.get_room_member_channels(room.pk)
+        room.member_count = len(channels)
+        for m in created_members:
+            body = RoomMemberSerializer(m).data
+            broadcast_payload = {
+                'channels': channels,
+                'data': {
+                    'type': 'user_joined',
+                    'body': body
+                },
+                'idempotency_key': f'user_joined_{m.pk}'
+            }
+            self.broadcast_room(room, broadcast_payload)
+
+        # Response with room info
+        room_data = RoomSerializer(Room.objects.annotate(member_count=Count('memberships__id')).get(pk=room.pk)).data
+        return Response(room_data, status=status.HTTP_201_CREATED)
+
+    # Minimal broadcast helpers to avoid depending on CentrifugoMixin order
+    def get_room_member_channels(self, room_id):
+        members = RoomMember.objects.filter(room_id=room_id).values_list('user', flat=True)
+        return [f'personal:{user_id}' for user_id in members]
+
+    def broadcast_room(self, room, broadcast_payload):
+        room_id = room.pk
+        room_name = room.name
+
+        def broadcast():
+            session = requests.Session()
+            retries = Retry(total=1, backoff_factor=1, status_forcelist=[500, 502, 503, 504])
+            session.mount('http://', HTTPAdapter(max_retries=retries))
+            try:
+                session.post(
+                    settings.CENTRIFUGO_HTTP_API_ENDPOINT + '/api/broadcast',
+                    data=json.dumps(broadcast_payload),
+                    headers={
+                        'Content-type': 'application/json',
+                        'X-API-Key': settings.CENTRIFUGO_HTTP_API_KEY,
+                        'X-Centrifugo-Error-Mode': 'transport'
+                    }
+                )
+            except requests.exceptions.RequestException as e:
+                logging.error(e)
+
+        if settings.CENTRIFUGO_BROADCAST_MODE == 'api':
+            transaction.on_commit(broadcast)
+        elif settings.CENTRIFUGO_BROADCAST_MODE == 'outbox':
+            partition = hash(room_id) % settings.CENTRIFUGO_OUTBOX_PARTITIONS
+            Outbox.objects.create(method='broadcast', payload=broadcast_payload, partition=partition)
+        elif settings.CENTRIFUGO_BROADCAST_MODE == 'cdc':
+            partition = hash(room_id)
+            CDC.objects.create(method='broadcast', payload=broadcast_payload, partition=partition)
+        elif settings.CENTRIFUGO_BROADCAST_MODE == 'api_cdc':
+            if len(broadcast_payload['channels']) <= 1000000:
+                transaction.on_commit(broadcast)
+            partition = hash(room_id)
+            CDC.objects.create(method='broadcast', payload=broadcast_payload, partition=partition)
+        else:
+            raise ValueError(f'unknown CENTRIFUGO_BROADCAST_MODE: {settings.CENTRIFUGO_BROADCAST_MODE}')
 
 
 class RoomDetailViewSet(RetrieveModelMixin, GenericViewSet):
@@ -255,3 +349,74 @@ class LeaveRoomView(APIView, CentrifugoMixin):
         self.broadcast_room(room, broadcast_payload)
         self.update_user_room_topic(request.user.pk, room_id, 'remove')
         return Response(body, status=status.HTTP_200_OK)
+
+
+class RoomMembersView(APIView, CentrifugoMixin):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, room_id):
+        # Only members can list room members
+        get_object_or_404(RoomMember, user=str(request.user.pk), room_id=room_id)
+        members = RoomMember.objects.filter(room_id=room_id).order_by('joined_at')
+        return Response(RoomMemberListSerializer(members, many=True).data)
+
+    @transaction.atomic
+    def post(self, request, room_id):
+        # Only service tokens may add arbitrary members
+        if not IsServiceToken().has_permission(request, self):
+            return Response({'detail': 'forbidden'}, status=status.HTTP_403_FORBIDDEN)
+        room = Room.objects.select_for_update().get(id=room_id)
+        room.increment_version()
+        to_add = request.data.get('users') or []
+        if not isinstance(to_add, list):
+            return Response({'detail': 'users must be a list of ids'}, status=status.HTTP_400_BAD_REQUEST)
+        unique_members = list({str(mid) for mid in to_add})
+        created_members = []
+        for user_id in unique_members:
+            obj, created = RoomMember.objects.get_or_create(user=str(user_id), room=room)
+            if created:
+                created_members.append(obj)
+        channels = self.get_room_member_channels(room_id)
+        room.member_count = len(channels)
+        for m in created_members:
+            body = RoomMemberSerializer(m).data
+            broadcast_payload = {
+                'channels': channels,
+                'data': {
+                    'type': 'user_joined',
+                    'body': body
+                },
+                'idempotency_key': f'user_joined_{m.pk}'
+            }
+            self.broadcast_room(room, broadcast_payload)
+            self.update_user_room_topic(m.user, room_id, 'add')
+        return Response({'added': [m.user for m in created_members]}, status=status.HTTP_200_OK)
+
+
+class RoomMemberDetailView(APIView, CentrifugoMixin):
+    permission_classes = [IsAuthenticated]
+
+    @transaction.atomic
+    def delete(self, request, room_id, user_id):
+        # Only service tokens may remove arbitrary members
+        if not IsServiceToken().has_permission(request, self):
+            return Response({'detail': 'forbidden'}, status=status.HTTP_403_FORBIDDEN)
+        room = Room.objects.select_for_update().get(id=room_id)
+        room.increment_version()
+        channels = self.get_room_member_channels(room_id)
+        obj = get_object_or_404(RoomMember, user=str(user_id), room=room)
+        room.member_count = len(channels) - 1
+        pk = obj.pk
+        body = RoomMemberSerializer(obj).data
+        obj.delete()
+        broadcast_payload = {
+            'channels': channels,
+            'data': {
+                'type': 'user_left',
+                'body': body
+            },
+            'idempotency_key': f'user_left_{pk}'
+        }
+        self.broadcast_room(room, broadcast_payload)
+        self.update_user_room_topic(user_id, room_id, 'remove')
+        return Response(status=status.HTTP_204_NO_CONTENT)

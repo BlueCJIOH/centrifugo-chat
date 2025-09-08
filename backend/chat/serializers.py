@@ -46,6 +46,28 @@ class RoomMemberSerializer(serializers.ModelSerializer):
         read_only_fields = ['room', 'user']
 
 
+class RoomMemberListSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = RoomMember
+        fields = ['user', 'joined_at']
+
+
+class RoomCreateSerializer(serializers.Serializer):
+    name = serializers.CharField(max_length=100)
+    members = serializers.ListField(
+        child=serializers.CharField(max_length=64), required=False, allow_empty=True
+    )
+
+    def validate_name(self, value):
+        if Room.objects.filter(name=value).exists():
+            raise serializers.ValidationError('room with this name already exists')
+        return value
+
+    def create(self, validated_data):
+        # Creation is handled in the view to control transactions and broadcasting.
+        raise NotImplementedError
+
+
 class MessageSerializer(serializers.ModelSerializer):
     room = MessageRoomSerializer(read_only=True)
 
