@@ -11,18 +11,6 @@ https://docs.djangoproject.com/en/5.0/ref/settings/
 from pathlib import Path
 import os
 
-# SECURITY WARNING: we enabled MD5PasswordHasher here for faster creation
-# of 100k users in app/utils.py. But don't use in production - remove this
-# PASSWORD_HASHERS option from settings to use Django's sane defaults.
-PASSWORD_HASHERS = [
-    "django.contrib.auth.hashers.PBKDF2PasswordHasher",
-    "django.contrib.auth.hashers.PBKDF2SHA1PasswordHasher",
-    "django.contrib.auth.hashers.Argon2PasswordHasher",
-    "django.contrib.auth.hashers.BCryptSHA256PasswordHasher",
-    "django.contrib.auth.hashers.ScryptPasswordHasher",
-    "django.contrib.auth.hashers.MD5PasswordHasher",
-]
-
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -53,6 +41,8 @@ CENTRIFUGO_HTTP_API_ENDPOINT = "http://centrifugo:8000"
 # CENTRIFUGO_HTTP_API_KEY is used for auth in Centrifugo server HTTP API.
 # SECURITY WARNING: make it strong, keep it in secret!
 CENTRIFUGO_HTTP_API_KEY = 'api_key'
+# JWT secret shared with main service to validate incoming tokens
+JWT_SECRET = os.environ.get('JWT_SECRET', SECRET_KEY)
 # CENTRIFUGO_BROADCAST_MODE sets the mode how to broadcast messages to Centrifugo
 # in this example app.
 # 
@@ -116,7 +106,7 @@ REST_FRAMEWORK = {
         'rest_framework.renderers.JSONRenderer',
     ],
     'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework.authentication.SessionAuthentication',
+        'app.authentication.JWTAuthentication',
     ],
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 100

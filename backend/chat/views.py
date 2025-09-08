@@ -27,8 +27,8 @@ class RoomListViewSet(ListModelMixin, GenericViewSet):
         return Room.objects.annotate(
             member_count=Count('memberships__id')
         ).filter(
-            memberships__user_id=self.request.user.pk
-        ).select_related('last_message', 'last_message__user').order_by('-bumped_at')
+            memberships__user=str(self.request.user.pk)
+        ).select_related('last_message').order_by('-bumped_at')
 
 
 class RoomDetailViewSet(RetrieveModelMixin, GenericViewSet):
@@ -38,7 +38,7 @@ class RoomDetailViewSet(RetrieveModelMixin, GenericViewSet):
     def get_queryset(self):
         return Room.objects.annotate(
             member_count=Count('memberships')
-        ).filter(memberships__user_id=self.request.user.pk)
+        ).filter(memberships__user=str(self.request.user.pk))
 
 
 class RoomSearchViewSet(viewsets.ModelViewSet):
@@ -46,10 +46,10 @@ class RoomSearchViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        user = self.request.user
+        user_id = str(self.request.user.pk)
         user_membership = RoomMember.objects.filter(
             room=OuterRef('pk'),
-            user=user
+            user=user_id
         )
         return Room.objects.annotate(
             is_member=Exists(user_membership)
@@ -173,9 +173,9 @@ class MessageListCreateAPIView(ListCreateAPIView, CentrifugoMixin):
 
     def get_queryset(self):
         room_id = self.kwargs['room_id']
-        get_object_or_404(RoomMember, user=self.request.user, room_id=room_id)
+        get_object_or_404(RoomMember, user=str(self.request.user.pk), room_id=room_id)
         return Message.objects.filter(
-            room_id=room_id).prefetch_related('user', 'room').order_by('-created_at')
+            room_id=room_id).select_related('room').order_by('-created_at')
 
     @transaction.atomic
     def create(self, request, *args, **kwargs):
@@ -185,7 +185,7 @@ class MessageListCreateAPIView(ListCreateAPIView, CentrifugoMixin):
         channels = self.get_room_member_channels(room_id)
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        obj = serializer.save(room=room, user=request.user)
+        obj = serializer.save(room=room, user=str(request.user.pk))
         room.last_message = obj
         room.bumped_at = timezone.now()
         room.save()
@@ -210,9 +210,9 @@ class JoinRoomView(APIView, CentrifugoMixin):
     def post(self, request, room_id):
         room = Room.objects.select_for_update().get(id=room_id)
         room.increment_version()
-        if RoomMember.objects.filter(user=request.user, room=room).exists():
+        if RoomMember.objects.filter(user=str(request.user.pk), room=room).exists():
             return Response({"message": "already a member"}, status=status.HTTP_409_CONFLICT)
-        obj, _ = RoomMember.objects.get_or_create(user=request.user, room=room)
+        obj, _ = RoomMember.objects.get_or_create(user=str(request.user.pk), room=room)
         channels = self.get_room_member_channels(room_id)
         obj.room.member_count = len(channels)
         body = RoomMemberSerializer(obj).data
@@ -238,7 +238,7 @@ class LeaveRoomView(APIView, CentrifugoMixin):
         room = Room.objects.select_for_update().get(id=room_id)
         room.increment_version()
         channels = self.get_room_member_channels(room_id)
-        obj = get_object_or_404(RoomMember, user=request.user, room=room)
+        obj = get_object_or_404(RoomMember, user=str(request.user.pk), room=room)
         obj.room.member_count = len(channels) - 1
         pk = obj.pk
         obj.delete()

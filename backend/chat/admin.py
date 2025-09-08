@@ -12,24 +12,24 @@ class RoomAdmin(admin.ModelAdmin):
 @admin.register(RoomMember)
 class RoomMemberAdmin(admin.ModelAdmin):
     list_display = ('room', 'user', 'joined_at')
-    search_fields = ('room__name', 'user__username')
+    search_fields = ('room__name', 'user')
     ordering = ('-joined_at',)
-    autocomplete_fields = ('room', 'user',)
+    autocomplete_fields = ('room',)
 
     def get_queryset(self, request):
-        return super().get_queryset(request).prefetch_related('room', 'user')
+        return super().get_queryset(request).select_related('room')
 
 
 @admin.register(Message)
 class MessageAdmin(admin.ModelAdmin):
     list_display = ('room', 'user', 'created_at', 'short_content')
-    search_fields = ('room__name', 'user__username', 'content')
-    list_filter = ('room', 'user')
+    search_fields = ('room__name', 'user', 'content')
+    list_filter = ('room',)
     ordering = ('-created_at',)
-    autocomplete_fields = ('room', 'user',)
+    autocomplete_fields = ('room',)
 
     def get_queryset(self, request):
-        return super().get_queryset(request).prefetch_related('room', 'user')
+        return super().get_queryset(request).select_related('room')
 
     def short_content(self, obj):
         return obj.content[:50] + '...' if len(obj.content) > 50 else obj.content
