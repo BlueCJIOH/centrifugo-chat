@@ -1,5 +1,4 @@
 from django.db import models
-from django.contrib.auth.models import User
 
 
 class Room(models.Model):
@@ -23,14 +22,14 @@ class Room(models.Model):
 
 class RoomMember(models.Model):
     room = models.ForeignKey(Room, related_name='memberships', on_delete=models.CASCADE)
-    user = models.ForeignKey(User, related_name='rooms', on_delete=models.CASCADE)
+    user = models.CharField(max_length=64, db_index=True)
     joined_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         unique_together = ('room', 'user')
 
     def __str__(self):
-        return f"{self.user.username} in {self.room.name}"
+        return f"{self.user} in {self.room.name}"
 
 
 class Message(models.Model):
@@ -38,7 +37,7 @@ class Message(models.Model):
     # Note, message may have null user – we consider such messages "system". These messages
     # initiated by the backend and have no user author. We are not using such messages in
     # the example currently, but leave the opportunity to extend.
-    user = models.ForeignKey(User, related_name='messages', on_delete=models.CASCADE, null=True)
+    user = models.CharField(max_length=64, null=True, blank=True, db_index=True)
     content = models.TextField()
     created_at = models.DateTimeField(auto_now_add=True)
 

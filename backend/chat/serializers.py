@@ -1,17 +1,9 @@
 from rest_framework import serializers
 from .models import Room, RoomMember, Message
-from django.contrib.auth.models import User
-from django.shortcuts import get_object_or_404
-
-
-class UserSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = User
-        fields = ['id', 'username']
 
 
 class LastMessageSerializer(serializers.ModelSerializer):
-    user = UserSerializer(read_only=True)
+    user = serializers.CharField(read_only=True)
 
     class Meta:
         model = Message
@@ -46,18 +38,18 @@ class RoomSearchSerializer(serializers.ModelSerializer):
 
 
 class RoomMemberSerializer(serializers.ModelSerializer):
-    user = UserSerializer(read_only=True)
     room = RoomSerializer(read_only=True)
-    
+
     class Meta:
         model = RoomMember
         fields = ['room', 'user']
+        read_only_fields = ['room', 'user']
 
 
 class MessageSerializer(serializers.ModelSerializer):
-    user = UserSerializer(read_only=True)
     room = MessageRoomSerializer(read_only=True)
 
     class Meta:
         model = Message
         fields = ['id', 'content', 'user', 'room', 'created_at']
+        read_only_fields = ['id', 'user', 'room', 'created_at']
