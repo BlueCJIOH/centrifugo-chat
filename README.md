@@ -1,38 +1,55 @@
-# Django + React + Centrifugo chat (instant messenger) application 
+# Django + Centrifugo chat backend
 
-This is a source code for [Centrifugo Chat/Messenger Tutorial](https://centrifugal.dev/docs/tutorial/intro).
-
-<img src="https://centrifugal.dev/img/grand-chat-tutorial-tech.png?v=1" />
+This repository provides the backend and Centrifugo setup for a real-time chat service. The original React frontend was removed so the API can be consumed from another application.
 
 ## Running locally
 
-You need Docker with Docker Compose. First, run the app:
+Docker and Docker Compose are required:
 
 ```sh
 docker compose up
 ```
 
-After containers started for the first time, from another terminal window (you must be in the repo root) create admin user (or better two since you want to try chatting, right?):
+After containers start, create an admin user to manage rooms:
 
 ```sh
 docker compose exec backend python manage.py createsuperuser
 ```
 
-Then go to [http://localhost:9000/admin](http://localhost:9000/admin), use admin user credentials to login and create several rooms. Alternatively, you can open Django shell:
+Use the Django admin at [http://localhost:9000/admin](http://localhost:9000/admin) to create chat rooms.
+
+## Authentication
+
+The API uses JWT authentication. Every request must include an `Authorization: Bearer <token>` header. Tokens are verified using the secret specified in the `JWT_SECRET` environment variable (falls back to the Django `SECRET_KEY`) and must contain a `sub` claim with the user ID. At the moment token validity is only checked locally; integrate with your `/auth/verify` endpoint in `app/authentication.py` as needed.
+
+Example: obtain a Centrifugo connection token for the current user.
 
 ```sh
-docker compose exec backend python manage.py shell
+curl -H "Authorization: Bearer <jwt>" http://localhost:9000/api/token/connection/
 ```
 
-And then inside Django shell:
+Subscribe to a personal channel:
 
-```python
-from app.utils import setup_dev
-setup_dev()
+```sh
+curl -H "Authorization: Bearer <jwt>" "http://localhost:9000/api/token/subscription/?channel=personal:<user_id>"
 ```
 
-Running `setup_dev` function will create 100k users and then 4 rooms with different number of members (100, 1k, 10k, 100k).
+The Centrifugo WebSocket endpoint is exposed at `http://localhost:8000/connection/websocket`.
 
-Then go to [http://localhost:9000](http://localhost:9000) and enjoy the working app! Login using second user (from incognito tab to not logout the first one session, or simply use different browser/device) to see the real-time in action.
+### Sending a message
 
-![demo](grandchat.png?raw=true "Image of app")
+Assuming user A and user B are members of room `42`, user A can post a message using their JWT:
+
+```sh
+curl -X POST \
+  -H "Authorization: Bearer <jwt_of_user_A>" \
+  -H "Content-Type: application/json" \
+  -d '{"content": "hello"}' \
+  http://localhost:9000/api/rooms/42/messages/
+```
+
+All room members (including user B) who are subscribed to their personal channels will receive the message through Centrifugo.
+
+## Integrating with another service
+
+Your primary service should authenticate users and issue JWTs. Use those tokens to call the endpoints under `/api/` of this project to manage chat rooms and messages.
