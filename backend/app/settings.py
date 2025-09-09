@@ -34,7 +34,7 @@ SESSION_COOKIE_HTTPONLY = True
 
 # CENTRIFUGO_TOKEN_SECRET is used to create connection and subscription JWT.
 # SECURITY WARNING: make it strong, keep it in secret, never send to the frontend!
-CENTRIFUGO_TOKEN_SECRET = 'secret'
+CENTRIFUGO_TOKEN_SECRET = 'a4f2#p4=$5cd1)=xahh12r_sv(1g8jls&m-(zlja1&^8@2a%a0' # CAN BE JWT
 # CENTRIFUGO_HTTP_API_ENDPOINT used to set Centrifugo HTTP base endpoint.
 # If you are using Centrifugo outside Docker - remember to change it.
 CENTRIFUGO_HTTP_API_ENDPOINT = "http://centrifugo:8000"
@@ -42,7 +42,7 @@ CENTRIFUGO_HTTP_API_ENDPOINT = "http://centrifugo:8000"
 # SECURITY WARNING: make it strong, keep it in secret!
 CENTRIFUGO_HTTP_API_KEY = 'api_key'
 # JWT secret shared with main service to validate incoming tokens
-JWT_SECRET = os.environ.get('JWT_SECRET', SECRET_KEY)
+JWT_SECRET = os.environ.get('JWT_SECRET', SECRET_KEY) # CAN BE JWT
 # CENTRIFUGO_BROADCAST_MODE sets the mode how to broadcast messages to Centrifugo
 # in this example app.
 # 
@@ -115,7 +115,7 @@ REST_FRAMEWORK = {
 
 SIMPLE_JWT = {
     'SIGNING_KEY': os.environ.get('JWT_SECRET', SECRET_KEY),
-    'USER_ID_CLAIM': 'sub',
+    'USER_ID_CLAIM': 'id',
 }
 
 ROOT_URLCONF = 'app.urls'

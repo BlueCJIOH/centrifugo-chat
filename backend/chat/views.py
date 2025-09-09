@@ -11,6 +11,7 @@ from rest_framework import status, viewsets
 from rest_framework.generics import ListCreateAPIView
 from rest_framework.mixins import ListModelMixin, RetrieveModelMixin
 from rest_framework.permissions import IsAuthenticated
+from app.permissions import IsRoomMemberOfURLRoom, CreatorIncludedInMembers
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.viewsets import GenericViewSet
@@ -24,10 +25,6 @@ from .serializers import (
     RoomMemberListSerializer,
     RoomCreateSerializer,
 )
-from app.permissions import IsServiceToken
-
-
- 
 
 
 class RoomListViewSet(ListModelMixin, GenericViewSet):
@@ -46,9 +43,6 @@ class RoomListViewSet(ListModelMixin, GenericViewSet):
 
     @transaction.atomic
     def create(self, request, *args, **kwargs):
-        # Only service tokens may create rooms and set initial members.
-        if not IsServiceToken().has_permission(request, self):
-            return Response({'detail': 'forbidden'}, status=status.HTTP_403_FORBIDDEN)
         serializer = RoomCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         name = serializer.validated_data['name']
@@ -81,6 +75,12 @@ class RoomListViewSet(ListModelMixin, GenericViewSet):
         # Response with room info
         room_data = RoomSerializer(Room.objects.annotate(member_count=Count('memberships__id')).get(pk=room.pk)).data
         return Response(room_data, status=status.HTTP_201_CREATED)
+
+    def get_permissions(self):
+        perms = [IsAuthenticated()]
+        if getattr(self, 'action', None) == 'create':
+            perms.append(CreatorIncludedInMembers())
+        return perms
 
     # Minimal broadcast helpers to avoid depending on CentrifugoMixin order
     def get_room_member_channels(self, room_id):
@@ -263,7 +263,7 @@ class CentrifugoMixin:
 
 class MessageListCreateAPIView(ListCreateAPIView, CentrifugoMixin):
     serializer_class = MessageSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsRoomMemberOfURLRoom]
 
     def get_queryset(self):
         room_id = self.kwargs['room_id']
@@ -363,8 +363,6 @@ class RoomMembersView(APIView, CentrifugoMixin):
     @transaction.atomic
     def post(self, request, room_id):
         # Only service tokens may add arbitrary members
-        if not IsServiceToken().has_permission(request, self):
-            return Response({'detail': 'forbidden'}, status=status.HTTP_403_FORBIDDEN)
         room = Room.objects.select_for_update().get(id=room_id)
         room.increment_version()
         to_add = request.data.get('users') or []
@@ -399,8 +397,6 @@ class RoomMemberDetailView(APIView, CentrifugoMixin):
     @transaction.atomic
     def delete(self, request, room_id, user_id):
         # Only service tokens may remove arbitrary members
-        if not IsServiceToken().has_permission(request, self):
-            return Response({'detail': 'forbidden'}, status=status.HTTP_403_FORBIDDEN)
         room = Room.objects.select_for_update().get(id=room_id)
         room.increment_version()
         channels = self.get_room_member_channels(room_id)

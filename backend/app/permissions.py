@@ -3,26 +3,29 @@ from django.conf import settings
 from rest_framework.permissions import BasePermission
 
 
-class IsServiceToken(BasePermission):
+class IsRoomMemberOfURLRoom(BasePermission):
+    """Allow only users who are members of the room referenced in URL.
+
+    Expects a `room_id` kwarg in the view.
     """
-    Allows access only to service-to-service calls identified by JWT claims.
-    Accepts either:
-      - claim "role" == "service"
-      - or claim "scp" (scope) containing "chat.manage"
-    """
+    message = 'forbidden'
 
     def has_permission(self, request, view):
-        raw = request.auth
-        if not raw:
-            return False
-        try:
-            payload = jwt.decode(raw, settings.JWT_SECRET, algorithms=['HS256'])
-        except jwt.InvalidTokenError:
-            return False
-        if payload.get('role') == 'service':
+        room_id = getattr(view, 'kwargs', {}).get('room_id')
+        if not room_id:
             return True
-        scopes = payload.get('scp') or payload.get('scope')
-        if isinstance(scopes, str):
-            scopes = scopes.split()
-        return isinstance(scopes, (list, tuple)) and 'chat.manage' in scopes
+        from chat.models import RoomMember  # local import to avoid circular imports
+        return RoomMember.objects.filter(user=str(request.user.pk), room_id=room_id).exists()
+
+
+class CreatorIncludedInMembers(BasePermission):
+    """Ensure the requesting user is included in `members` when creating a room."""
+    message = 'creator must be included into members'
+
+    def has_permission(self, request, view):
+        # Only enforce on POST requests intended to create a room
+        if request.method != 'POST':
+            return True
+        members = request.data.get('members') or []
+        return str(request.user.pk) in {str(m) for m in members}
 

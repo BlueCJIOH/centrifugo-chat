@@ -31,7 +31,7 @@ class JWTAuthentication(authentication.BaseAuthentication):
         except jwt.InvalidTokenError:
             raise exceptions.AuthenticationFailed('Invalid token')
         # TODO: call external service /auth/verify to ensure token is still valid.
-        user_id = payload.get('sub')
+        user_id = payload.get('user_id')
         if not user_id:
-            raise exceptions.AuthenticationFailed('Missing sub claim')
+            raise exceptions.AuthenticationFailed('Missing user_id claim')
         return JWTUser(id=str(user_id)), token

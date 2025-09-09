@@ -18,11 +18,6 @@
       "http://localhost:9000"
     ]
   },
-  "prometheus": {
-    "enabled": true,
-    "instrument_http_handlers": true,
-    "channel_namespace_resolution": true
-  },
   "log": {
     "level": "debug"
   },
