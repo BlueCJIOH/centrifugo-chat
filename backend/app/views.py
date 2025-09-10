@@ -37,35 +37,3 @@ def get_subscription_token(request):
     }
     token = jwt.encode(token_claims, settings.CENTRIFUGO_TOKEN_SECRET)
     return Response({'token': token})
-
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def device_register_view(request):
-    device_info = request.data.get('device')
-    if not device_info:
-        return Response({'detail': 'device not found'}, status=400)
-
-    # Attach user ID to device info.
-    device_info["user"] = str(request.user.pk)
-
-    session = requests.Session()
-    try:
-        resp = session.post(
-            settings.CENTRIFUGO_HTTP_API_ENDPOINT + '/api/device_register',
-            data=json.dumps(device_info),
-            headers={
-                'Content-type': 'application/json',
-                'X-API-Key': settings.CENTRIFUGO_HTTP_API_KEY,
-                'X-Centrifugo-Error-Mode': 'transport'
-            }
-        )
-    except requests.exceptions.RequestException as e:
-        logging.error(e)
-        return Response({'detail': 'failed to register device'}, status=500)
-
-    if resp.status_code != 200:
-        logging.error(resp.json())
-        return Response({'detail': 'failed to register device'}, status=500)
-
-    return Response({'device_id': resp.json().get('result', {}).get('id')})

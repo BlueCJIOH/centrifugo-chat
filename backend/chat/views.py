@@ -19,7 +19,6 @@ from rest_framework.viewsets import GenericViewSet
 from .models import Message, Room, RoomMember, Outbox, CDC
 from .serializers import (
     MessageSerializer,
-    RoomSearchSerializer,
     RoomSerializer,
     RoomMemberSerializer,
     RoomMemberListSerializer,
@@ -43,10 +42,15 @@ class RoomListViewSet(ListModelMixin, GenericViewSet):
 
     @transaction.atomic
     def create(self, request, *args, **kwargs):
-        serializer = RoomCreateSerializer(data=request.data)
+        serializer = RoomCreateSerializer(data=request.data, context={"request": request})
         serializer.is_valid(raise_exception=True)
         name = serializer.validated_data['name']
         members = serializer.validated_data.get('members') or []
+        # Ensure no member would end up with duplicate room name
+        unique_members = list({str(mid) for mid in members})
+        conflicts = list(RoomMember.objects.filter(user__in=unique_members, room__name=name).values_list('user', flat=True).distinct())
+        if conflicts:
+            return Response({'detail': 'room with this name already exists for some users', 'conflicts': conflicts}, status=status.HTTP_409_CONFLICT)
         room = Room.objects.create(name=name)
         # Create memberships and broadcast join events.
         # Ensure deduplication of member ids.
@@ -133,21 +137,6 @@ class RoomDetailViewSet(RetrieveModelMixin, GenericViewSet):
         return Room.objects.annotate(
             member_count=Count('memberships')
         ).filter(memberships__user=str(self.request.user.pk))
-
-
-class RoomSearchViewSet(viewsets.ModelViewSet):
-    serializer_class = RoomSearchSerializer
-    permission_classes = [IsAuthenticated]
-
-    def get_queryset(self):
-        user_id = str(self.request.user.pk)
-        user_membership = RoomMember.objects.filter(
-            room=OuterRef('pk'),
-            user=user_id
-        )
-        return Room.objects.annotate(
-            is_member=Exists(user_membership)
-        ).order_by('name')
 
 
 class CentrifugoMixin:
@@ -297,60 +286,6 @@ class MessageListCreateAPIView(ListCreateAPIView, CentrifugoMixin):
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
 
-class JoinRoomView(APIView, CentrifugoMixin):
-    permission_classes = [IsAuthenticated]
-
-    @transaction.atomic
-    def post(self, request, room_id):
-        room = Room.objects.select_for_update().get(id=room_id)
-        room.increment_version()
-        if RoomMember.objects.filter(user=str(request.user.pk), room=room).exists():
-            return Response({"message": "already a member"}, status=status.HTTP_409_CONFLICT)
-        obj, _ = RoomMember.objects.get_or_create(user=str(request.user.pk), room=room)
-        channels = self.get_room_member_channels(room_id)
-        obj.room.member_count = len(channels)
-        body = RoomMemberSerializer(obj).data
-
-        broadcast_payload = {
-            'channels': channels,
-            'data': {
-                'type': 'user_joined',
-                'body': body
-            },
-            'idempotency_key': f'user_joined_{obj.pk}'
-        }
-        self.broadcast_room(room, broadcast_payload)
-        self.update_user_room_topic(request.user.pk, room_id, 'add')
-        return Response(body, status=status.HTTP_200_OK)
-
-
-class LeaveRoomView(APIView, CentrifugoMixin):
-    permission_classes = [IsAuthenticated]
-
-    @transaction.atomic
-    def post(self, request, room_id):
-        room = Room.objects.select_for_update().get(id=room_id)
-        room.increment_version()
-        channels = self.get_room_member_channels(room_id)
-        obj = get_object_or_404(RoomMember, user=str(request.user.pk), room=room)
-        obj.room.member_count = len(channels) - 1
-        pk = obj.pk
-        obj.delete()
-        body = RoomMemberSerializer(obj).data
-
-        broadcast_payload = {
-            'channels': channels,
-            'data': {
-                'type': 'user_left',
-                'body': body
-            },
-            'idempotency_key': f'user_left_{pk}'
-        }
-        self.broadcast_room(room, broadcast_payload)
-        self.update_user_room_topic(request.user.pk, room_id, 'remove')
-        return Response(body, status=status.HTTP_200_OK)
-
-
 class RoomMembersView(APIView, CentrifugoMixin):
     permission_classes = [IsAuthenticated]
 
@@ -369,6 +304,10 @@ class RoomMembersView(APIView, CentrifugoMixin):
         if not isinstance(to_add, list):
             return Response({'detail': 'users must be a list of ids'}, status=status.HTTP_400_BAD_REQUEST)
         unique_members = list({str(mid) for mid in to_add})
+        # Enforce per-user uniqueness of room name
+        conflicts = [uid for uid in unique_members if RoomMember.objects.filter(user=str(uid), room__name=room.name).exists()]
+        if conflicts:
+            return Response({'detail': 'room with this name already exists for some users', 'conflicts': conflicts}, status=status.HTTP_409_CONFLICT)
         created_members = []
         for user_id in unique_members:
             obj, created = RoomMember.objects.get_or_create(user=str(user_id), room=room)

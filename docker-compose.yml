@@ -15,7 +15,7 @@ services:
     expose:
       - 5432
     ports:
-      - 5432:5432
+      - 5433:5432
     command: ["postgres", "-c", "wal_level=logical", "-c", "wal_writer_delay=10ms"]
 
   backend:
@@ -24,10 +24,15 @@ services:
     volumes:
       - ./backend:/usr/src/app
     ports:
-      - "9000:8000"
+      - "9002:8000"
+    env_file:
+      - .env
     depends_on:
       db:
         condition: service_healthy
+    networks:
+      - default
+      - nginx_network
 
   migrations:
     build: ./backend
@@ -45,7 +50,7 @@ services:
       - ./centrifugo:/centrifugo
     command: centrifugo -c config.json
     ports:
-      - "8000:8000"
+      - "8001:8000"
     depends_on:
       db:
         condition: service_healthy
@@ -53,6 +58,9 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    networks:
+      - default
+      - nginx_network
 
   zookeeper:
     image: confluentinc/cp-zookeeper:7.4.3
@@ -85,6 +93,7 @@ services:
       KAFKA_MAX_REQUEST_SIZE: "10485760"
       KAFKA_MESSAGE_MAX_BYTES: "10485760"
       KAFKA_MAX_PARTITION_FETCH_BYTES: "10485760"
+    restart: unless-stopped
 
   connect:
     image: debezium/connect:2.5
@@ -121,7 +130,7 @@ services:
   redis:
     image: redis:${REDIS_VERSION:-7}-alpine
     ports:
-      - "6379:6379"
+      - "6380:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 2s
@@ -130,4 +139,8 @@ services:
 
 volumes:
   postgres_data:
-  grafana-data:
+
+networks:
+  nginx_network:
+    name: "nginx_network"
+    external: true

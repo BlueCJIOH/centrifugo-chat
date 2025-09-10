@@ -24,7 +24,6 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/token/connection/', views.get_connection_token, name='api-connection-token'),
     path('api/token/subscription/', views.get_subscription_token, name='api-subscription-token'),
-    path('api/device/register/', views.device_register_view, name='api-device-register'),
     path('api/', include('chat.urls')),
 ]
 

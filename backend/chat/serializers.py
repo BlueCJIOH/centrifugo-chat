@@ -28,15 +28,6 @@ class MessageRoomSerializer(serializers.ModelSerializer):
         fields = ['id', 'version', 'bumped_at']
 
 
-class RoomSearchSerializer(serializers.ModelSerializer):
-
-    is_member = serializers.BooleanField(read_only=True)
-    
-    class Meta:
-        model = Room
-        fields = ['id', 'name', 'created_at', 'is_member']
-
-
 class RoomMemberSerializer(serializers.ModelSerializer):
     room = RoomSerializer(read_only=True)
 
@@ -59,8 +50,12 @@ class RoomCreateSerializer(serializers.Serializer):
     )
 
     def validate_name(self, value):
-        if Room.objects.filter(name=value).exists():
-            raise serializers.ValidationError('room with this name already exists')
+        request = self.context.get('request') if hasattr(self, 'context') else None
+        if request and getattr(request, 'user', None):
+            user_id = str(request.user.pk)
+            # Room name must be unique for the user (among rooms where the user is a member)
+            if Room.objects.filter(name=value, memberships__user=user_id).exists():
+                raise serializers.ValidationError('room with this name already exists for user')
         return value
 
     def create(self, validated_data):
