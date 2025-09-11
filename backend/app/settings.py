@@ -18,7 +18,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/4.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'a4f2#p4=$5cd1)=xahh12r_sv(1g8jls&m-(zlja1&^8@2a%a0'
+SECRET_KEY = os.environ.get('SECRET_KEY')
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
@@ -36,17 +36,17 @@ SESSION_COOKIE_HTTPONLY = True
 # SECURITY WARNING: make it strong, keep it in secret, never send to the frontend!
 # Read from env var CENTRIFUGO_TOKEN_SECRET, default to "secret" to match local centrifugo/config.json
 # CENTRIFUGO_TOKEN_SECRET = os.environ.get('CENTRIFUGO_TOKEN_SECRET', 'qwdj9812u89ujdqwjdj98j120j')
-CENTRIFUGO_TOKEN_SECRET = 'secret'
+CENTRIFUGO_TOKEN_SECRET = os.environ.get('CENTRIFUGO_TOKEN_SECRET')
 # CENTRIFUGO_HTTP_API_ENDPOINT used to set Centrifugo HTTP base endpoint.
 # If you are using Centrifugo outside Docker - remember to change it.
 CENTRIFUGO_HTTP_API_ENDPOINT = "http://centrifugo:8000"
 # CENTRIFUGO_HTTP_API_KEY is used for auth in Centrifugo server HTTP API.
 # SECURITY WARNING: make it strong, keep it in secret!
-CENTRIFUGO_HTTP_API_KEY = 'api_key'
+CENTRIFUGO_HTTP_API_KEY = os.environ.get('CENTRIFUGO_HTTP_API_KEY')
 # JWT secret shared with main service to validate incoming tokens
 # Prefer JWT_SECRET env, fallback to SECRET_KEY (env) or Django SECRET_KEY constant
 # JWT_SECRET = os.environ.get('JWT_SECRET', os.environ.get('SECRET_KEY', SECRET_KEY))
-JWT_SECRET = 'a4f2#p4=$5cd1)=xahh12r_sv(1g8jls&m-(zlja1&^8@2a%a0'
+JWT_SECRET = os.environ.get('JWT_SECRET')
 # CENTRIFUGO_BROADCAST_MODE sets the mode how to broadcast messages to Centrifugo
 # in this example app.
 # 
@@ -118,7 +118,7 @@ REST_FRAMEWORK = {
 }
 
 SIMPLE_JWT = {
-    'SIGNING_KEY': 'a4f2#p4=$5cd1)=xahh12r_sv(1g8jls&m-(zlja1&^8@2a%a0',
+    'SIGNING_KEY': SECRET_KEY,
     'USER_ID_CLAIM': 'user_id',
 }
 
@@ -149,10 +149,10 @@ WSGI_APPLICATION = 'app.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'grandchat',
-        'USER': 'grandchat',
-        'PASSWORD': 'grandchat',
-        'HOST': 'db',
+        'NAME': os.environ.get('POSTGRES_DB'),
+        'USER': os.environ.get('POSTGRES_USER'),
+        'PASSWORD': os.environ.get('POSTGRES_PASSWORD'),
+        'HOST': os.environ.get('POSTGRES_HOST'),
         'PORT': '5432',
     }
 }

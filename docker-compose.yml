@@ -1,6 +1,7 @@
 services:
   db:
     image: postgres:15
+    container_name: "${DEVELOP}-${PROJECT_NAME}_db"
     volumes:
       - postgres_data:/var/lib/postgresql/data/
     healthcheck:
@@ -15,16 +16,17 @@ services:
     expose:
       - 5432
     ports:
-      - 5433:5432
+      - ${POSTGRES_PORT:-5433}:5432
     command: ["postgres", "-c", "wal_level=logical", "-c", "wal_writer_delay=10ms"]
 
   backend:
     build: ./backend
     restart: unless-stopped
+    container_name: "${DEVELOP}-${PROJECT_NAME}_backend"
     volumes:
       - ./backend:/usr/src/app
     ports:
-      - "9002:8000"
+      - "${BACKEND_PORT:-9002}:8000"
     env_file:
       - .env
     depends_on:
@@ -37,6 +39,7 @@ services:
   migrations:
     build: ./backend
     restart: on-failure
+    container_name: "${DEVELOP}-${PROJECT_NAME}_migrations"
     command: >
       python manage.py migrate
     depends_on:
@@ -46,11 +49,12 @@ services:
   centrifugo:
     image: centrifugo/centrifugo:v6
     restart: unless-stopped
+    container_name: "${DEVELOP}-${PROJECT_NAME}_centrifugo"
     volumes:
       - ./centrifugo:/centrifugo
     command: centrifugo -c config.json
     ports:
-      - "8001:8000"
+      - "${CENTRIFUGO_PORT:-8001}:8000"
     depends_on:
       db:
         condition: service_healthy
@@ -64,6 +68,7 @@ services:
 
   zookeeper:
     image: confluentinc/cp-zookeeper:7.4.3
+    container_name: "${DEVELOP}-${PROJECT_NAME}_zookeeper"
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
@@ -72,8 +77,9 @@ services:
     image: confluentinc/cp-kafka:7.4.3
     depends_on:
       - zookeeper
+    container_name: "${DEVELOP}-${PROJECT_NAME}_kafka"
     ports:
-      - "29092:29092"
+      - "${KAFKA_PORT:-29092}:29092"
     expose:
       - 9092
     healthcheck:
@@ -84,7 +90,7 @@ services:
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:${KAFKA_PORT:-29092}
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
@@ -102,8 +108,9 @@ services:
         condition: service_healthy
       kafka:
         condition: service_healthy
+    container_name: "${DEVELOP}-${PROJECT_NAME}_connect"
     ports:
-      - "8083:8083"
+      - "${KAFKA_CONNECT_PORT:-8083}:8083"
     environment:
       BOOTSTRAP_SERVERS: kafka:9092
       GROUP_ID: 1
@@ -117,6 +124,7 @@ services:
       - connect
     volumes:
       - ./debezium/debezium-config.json:/debezium-config.json
+    container_name: "${DEVELOP}-${PROJECT_NAME}_connect-config-loader"
     command: >
       /bin/sh -c "
         echo 'Waiting for Kafka Connect to start...';
@@ -129,8 +137,9 @@ services:
 
   redis:
     image: redis:${REDIS_VERSION:-7}-alpine
+    container_name: "${DEVELOP}-${PROJECT_NAME}_redis"
     ports:
-      - "6380:6379"
+      - "${REDIS_PORT:-6380}:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 2s
@@ -139,6 +148,7 @@ services:
 
 volumes:
   postgres_data:
+    name: "${ENVIRONMENT}-${PROJECT_NAME}_db-data"
 
 networks:
   nginx_network:
