@@ -42,6 +42,8 @@ services:
     container_name: "${DEVELOP}-${PROJECT_NAME}_migrations"
     command: >
       python manage.py migrate
+    env_file:
+      - .env
     depends_on:
       db:
         condition: service_healthy

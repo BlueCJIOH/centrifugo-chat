@@ -118,7 +118,7 @@ REST_FRAMEWORK = {
 }
 
 SIMPLE_JWT = {
-    'SIGNING_KEY': SECRET_KEY,
+    'SIGNING_KEY': os.environ.get('SECRET_KEY'),
     'USER_ID_CLAIM': 'user_id',
 }
 
