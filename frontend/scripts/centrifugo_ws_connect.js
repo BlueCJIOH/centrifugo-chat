@@ -12,7 +12,7 @@ const jwt = require('jsonwebtoken')
 const USER_ID = process.env.USER_ID || '5'
 const WS_URL = process.env.WS_URL || 'ws://localhost:8001/connection/websocket'
 const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:9002'
-const APP_JWT = process.env.APP_JWT || ''
+const APP_JWT = process.env.APP_JWT || 'a4f2#p4=$5cd1)=xahh12r_sv(1g8jls&m-(zlja1&^8@2a%a0'
 const CHANNEL = process.env.CHANNEL || `personal:${USER_ID}`
 
 async function getConnectionToken(appJwt) {
